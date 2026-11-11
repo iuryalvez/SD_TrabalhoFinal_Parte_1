@@ -49,7 +49,8 @@ def startPeers(peerList,nMsgs):
 	peerNumber = 0
 	for peer in peerList:
 		clientSock = socket(AF_INET, SOCK_STREAM)
-		clientSock.connect((peer, PEER_TCP_PORT))
+		# peer = (ip, porta UDP, porta TCP)
+		clientSock.connect((peer[0], peer[2]))
 		msg = (peerNumber,nMsgs)
 		msgPack = pickle.dumps(msg)
 		clientSock.send(msgPack)

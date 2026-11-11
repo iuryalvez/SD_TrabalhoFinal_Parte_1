@@ -1,0 +1,6 @@
+Medicoes feitas em 127.0.0.1 com "benchmark.py" (100 chamadas "list" ao GroupMngr).
+
+Versao com sockets (GroupMngr_sockets.py), tres execucoes:
+list com sockets: 100 chamadas em 0.0150 s, media de 0.150 ms por chamada
+list com sockets: 100 chamadas em 0.0164 s, media de 0.164 ms por chamada
+list com sockets: 100 chamadas em 0.0154 s, media de 0.154 ms por chamada

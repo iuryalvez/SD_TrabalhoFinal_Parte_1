@@ -4,7 +4,17 @@ import threading
 import random
 import time
 import pickle
+import sys
 from requests import get
+
+# Uso: python3 peerCommunicatorUDP.py [ip porta_udp porta_tcp]
+# Com os argumentos da pra rodar varios peers na mesma maquina.
+# Sem argumentos usa o IP publico e as portas do constMP.py.
+myAddr = None
+if len(sys.argv) == 4:
+  myAddr = sys.argv[1]
+  PEER_UDP_PORT = int(sys.argv[2])
+  PEER_TCP_PORT = int(sys.argv[3])
 
 #handShakes = [] # not used; only if we need to check whose handshake is missing
 
@@ -40,8 +50,11 @@ def registerWithGroupManager():
   clientSock = socket(AF_INET, SOCK_STREAM)
   print ('Connecting to group manager: ', (GROUPMNGR_ADDR,GROUPMNGR_TCP_PORT))
   clientSock.connect((GROUPMNGR_ADDR,GROUPMNGR_TCP_PORT))
-  ipAddr = get_public_ip()
-  req = {"op":"register", "ipaddr":ipAddr, "port":PEER_UDP_PORT}
+  if myAddr == None:
+    ipAddr = get_public_ip()
+  else:
+    ipAddr = myAddr
+  req = {"op":"register", "ipaddr":ipAddr, "port":PEER_UDP_PORT, "tcpport":PEER_TCP_PORT}
   msg = pickle.dumps(req)
   print ('Registering with group manager: ', req)
   clientSock.send(msg)
@@ -156,7 +169,7 @@ while 1:
     print('Sending handshake to ', addrToSend)
     msg = ('READY', myself)
     msgPack = pickle.dumps(msg)
-    sendSocket.sendto(msgPack, (addrToSend,PEER_UDP_PORT))
+    sendSocket.sendto(msgPack, (addrToSend[0],addrToSend[1]))
     #data = recvSocket.recvfrom(128) # Handshadke confirmations have not yet been implemented
 
   print('Main Thread: Sent all handshakes. handShakeCount=', str(handShakeCount))
@@ -171,11 +184,11 @@ while 1:
     msg = (myself, msgNumber)
     msgPack = pickle.dumps(msg)
     for addrToSend in PEERS:
-      sendSocket.sendto(msgPack, (addrToSend,PEER_UDP_PORT))
+      sendSocket.sendto(msgPack, (addrToSend[0],addrToSend[1]))
       print('Sent message ' + str(msgNumber))
 
   # Tell all processes that I have no more messages to send
   for addrToSend in PEERS:
     msg = (-1,-1)
     msgPack = pickle.dumps(msg)
-    sendSocket.sendto(msgPack, (addrToSend,PEER_UDP_PORT))
+    sendSocket.sendto(msgPack, (addrToSend[0],addrToSend[1]))
