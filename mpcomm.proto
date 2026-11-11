@@ -1,0 +1,52 @@
+syntax = "proto3";
+
+package mpcomm;
+
+// Servico do gerenciador de grupo (GroupMngr.py)
+service GroupManager {
+  rpc Register (PeerInfo) returns (Reply);
+  rpc List (Empty) returns (PeerList);
+  rpc Stop (Empty) returns (Reply);
+}
+
+// Servico de cada peer (peerCommunicatorUDP.py): recebe o sinal de inicio
+service Peer {
+  rpc Start (StartRequest) returns (Reply);
+}
+
+// Servico do servidor de comparacao (comparisonServer.py): recebe os logs
+service ComparisonServer {
+  rpc SendLog (MsgLog) returns (Reply);
+}
+
+message Empty {}
+
+message Reply {
+  string text = 1;
+}
+
+message PeerInfo {
+  string ipaddr = 1;
+  int32 udp_port = 2;   // porta do multicast (UDP)
+  int32 rpc_port = 3;   // porta do servico Peer (gRPC)
+}
+
+message PeerList {
+  repeated PeerInfo peers = 1;
+}
+
+message StartRequest {
+  int32 peer_id = 1;
+  int32 n_msgs = 2;
+}
+
+// Uma mensagem recebida no multicast: quem enviou e o numero de sequencia
+message Msg {
+  int32 sender = 1;
+  int32 seq = 2;
+}
+
+message MsgLog {
+  int32 peer_id = 1;
+  repeated Msg msgs = 2;
+}
