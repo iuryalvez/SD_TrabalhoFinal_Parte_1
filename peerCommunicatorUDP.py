@@ -5,6 +5,9 @@ import random
 import time
 import pickle
 import sys
+import grpc
+import mpcomm_pb2
+import mpcomm_pb2_grpc
 from requests import get
 
 # Uso: python3 peerCommunicatorUDP.py [ip porta_udp porta_tcp]
@@ -47,31 +50,30 @@ def get_public_ip():
 
 # Function to register this peer with the group manager
 def registerWithGroupManager():
-  clientSock = socket(AF_INET, SOCK_STREAM)
   print ('Connecting to group manager: ', (GROUPMNGR_ADDR,GROUPMNGR_TCP_PORT))
-  clientSock.connect((GROUPMNGR_ADDR,GROUPMNGR_TCP_PORT))
+  channel = grpc.insecure_channel(GROUPMNGR_ADDR + ':' + str(GROUPMNGR_TCP_PORT))
+  stub = mpcomm_pb2_grpc.GroupManagerStub(channel)
   if myAddr == None:
     ipAddr = get_public_ip()
   else:
     ipAddr = myAddr
-  req = {"op":"register", "ipaddr":ipAddr, "port":PEER_UDP_PORT, "tcpport":PEER_TCP_PORT}
-  msg = pickle.dumps(req)
-  print ('Registering with group manager: ', req)
-  clientSock.send(msg)
-  clientSock.close()
+  req = mpcomm_pb2.PeerInfo(ipaddr=ipAddr, udp_port=PEER_UDP_PORT, rpc_port=PEER_TCP_PORT)
+  print ('Registering with group manager: ', (ipAddr, PEER_UDP_PORT, PEER_TCP_PORT))
+  stub.Register(req)
+  channel.close()
 
 def getListOfPeers():
-  clientSock = socket(AF_INET, SOCK_STREAM)
   print ('Connecting to group manager: ', (GROUPMNGR_ADDR,GROUPMNGR_TCP_PORT))
-  clientSock.connect((GROUPMNGR_ADDR,GROUPMNGR_TCP_PORT))
-  req = {"op":"list"}
-  msg = pickle.dumps(req)
-  print ('Getting list of peers from group manager: ', req)
-  clientSock.send(msg)
-  msg = clientSock.recv(2048)
-  PEERS = pickle.loads(msg)
+  channel = grpc.insecure_channel(GROUPMNGR_ADDR + ':' + str(GROUPMNGR_TCP_PORT))
+  stub = mpcomm_pb2_grpc.GroupManagerStub(channel)
+  print ('Getting list of peers from group manager')
+  reply = stub.List(mpcomm_pb2.Empty())
+  # cada peer da lista: (ip, porta UDP, porta TCP)
+  PEERS = []
+  for p in reply.peers:
+    PEERS.append((p.ipaddr, p.udp_port, p.rpc_port))
   print ('Got list of peers: ', PEERS)
-  clientSock.close()
+  channel.close()
   return PEERS
 
 class MsgHandler(threading.Thread):

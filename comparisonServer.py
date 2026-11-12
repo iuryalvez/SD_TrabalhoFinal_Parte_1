@@ -3,6 +3,9 @@ import pickle
 from constMP import *
 import time
 import sys
+import grpc
+import mpcomm_pb2
+import mpcomm_pb2_grpc
 
 serverSock = socket(AF_INET, SOCK_STREAM)
 # Allow immediate reuse of the port after closing
@@ -14,14 +17,12 @@ def mainLoop():
 	cont = 1
 	while 1:
 		nMsgs = promptUser()
-		clientSock = socket(AF_INET, SOCK_STREAM)
-		clientSock.connect((GROUPMNGR_ADDR,GROUPMNGR_TCP_PORT))
-		req = {"op":"list"}
-		msg = pickle.dumps(req)
-		clientSock.send(msg)
-		msg = clientSock.recv(2048)
-		clientSock.close()
-		peerList = pickle.loads(msg)
+		channel = grpc.insecure_channel(GROUPMNGR_ADDR + ':' + str(GROUPMNGR_TCP_PORT))
+		stub = mpcomm_pb2_grpc.GroupManagerStub(channel)
+		reply = stub.List(mpcomm_pb2.Empty())
+		peerList = []
+		for p in reply.peers:
+			peerList.append((p.ipaddr, p.udp_port, p.rpc_port))
 		print("List of Peers: ", peerList)
 		startPeers(peerList,nMsgs)
 		if nMsgs != 0:
@@ -32,12 +33,8 @@ def mainLoop():
 			serverSock.close()
 			
 			# Tell group manager to stop
-			cSock = socket(AF_INET, SOCK_STREAM)
-			cSock.connect((GROUPMNGR_ADDR,GROUPMNGR_TCP_PORT))
-			req = {"op":"stop"}
-			msg = pickle.dumps(req)
-			cSock.send(msg)
-			cSock.close()
+			stub.Stop(mpcomm_pb2.Empty())
+			channel.close()
 			break
 
 def promptUser():

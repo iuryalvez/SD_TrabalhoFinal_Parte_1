@@ -4,3 +4,11 @@ Versao com sockets (GroupMngr_sockets.py), tres execucoes:
 list com sockets: 100 chamadas em 0.0150 s, media de 0.150 ms por chamada
 list com sockets: 100 chamadas em 0.0164 s, media de 0.164 ms por chamada
 list com sockets: 100 chamadas em 0.0154 s, media de 0.154 ms por chamada
+
+Versao com gRPC (GroupMngr.py), tres execucoes de "benchmark.py grpc":
+list com gRPC (mesmo canal): 100 chamadas em 0.0825 s, media de 0.825 ms por chamada
+list com gRPC (canal novo a cada chamada): 100 chamadas em 0.1323 s, media de 1.323 ms por chamada
+list com gRPC (mesmo canal): 100 chamadas em 0.0844 s, media de 0.844 ms por chamada
+list com gRPC (canal novo a cada chamada): 100 chamadas em 0.1420 s, media de 1.420 ms por chamada
+list com gRPC (mesmo canal): 100 chamadas em 0.0789 s, media de 0.789 ms por chamada
+list com gRPC (canal novo a cada chamada): 100 chamadas em 0.1371 s, media de 1.371 ms por chamada
