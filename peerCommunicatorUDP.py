@@ -5,6 +5,8 @@ import random
 import time
 import pickle
 import sys
+import queue
+from concurrent import futures
 import grpc
 import mpcomm_pb2
 import mpcomm_pb2_grpc
@@ -35,12 +37,19 @@ recvSocket = socket(AF_INET, SOCK_DGRAM)
 recvSocket.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
 recvSocket.bind(('0.0.0.0', PEER_UDP_PORT))
 
-# TCP socket to receive start signal from the comparison server:
-serverSock = socket(AF_INET, SOCK_STREAM)
-# Allow immediate reuse of the port after closing
-serverSock.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
-serverSock.bind(('0.0.0.0', PEER_TCP_PORT))
-serverSock.listen(1)
+# Fila onde o servico gRPC coloca o sinal de inicio recebido do comparison server
+startQueue = queue.Queue()
+
+# Servico gRPC do peer: recebe o sinal de inicio do comparison server
+class Peer(mpcomm_pb2_grpc.PeerServicer):
+  def Start(self, request, context):
+    startQueue.put((request.peer_id, request.n_msgs))
+    return mpcomm_pb2.Reply(text='Peer process '+str(request.peer_id)+' started.')
+
+peerServer = grpc.server(futures.ThreadPoolExecutor(max_workers=2))
+mpcomm_pb2_grpc.add_PeerServicer_to_server(Peer(), peerServer)
+peerServer.add_insecure_port('0.0.0.0:' + str(PEER_TCP_PORT))
+peerServer.start()
 
 
 def get_public_ip():
@@ -122,13 +131,15 @@ class MsgHandler(threading.Thread):
     logFile.writelines(str(logList))
     logFile.close()
     
-    # Send the list of messages to the server (using a TCP socket) for comparison
+    # Send the list of messages to the server (using RPC) for comparison
     print('Sending the list of messages to the server for comparison...')
-    clientSock = socket(AF_INET, SOCK_STREAM)
-    clientSock.connect((SERVER_ADDR, SERVER_PORT))
-    msgPack = pickle.dumps(logList)
-    clientSock.send(msgPack)
-    clientSock.close()
+    channel = grpc.insecure_channel(SERVER_ADDR + ':' + str(SERVER_PORT))
+    stub = mpcomm_pb2_grpc.ComparisonServerStub(channel)
+    log = mpcomm_pb2.MsgLog(peer_id=myself)
+    for m in logList:
+      log.msgs.add(sender=m[0], seq=m[1])
+    stub.SendLog(log)
+    channel.close()
     
     # Reset the handshake counter
     handShakeCount = 0
@@ -137,13 +148,8 @@ class MsgHandler(threading.Thread):
 
 # Function to wait for start signal from comparison server:
 def waitToStart():
-  (conn, addr) = serverSock.accept()
-  msgPack = conn.recv(1024)
-  msg = pickle.loads(msgPack)
-  myself = msg[0]
-  nMsgs = msg[1]
-  conn.send(pickle.dumps('Peer process '+str(myself)+' started.'))
-  conn.close()
+  # fica bloqueado ate o servico gRPC receber uma chamada Start
+  (myself, nMsgs) = startQueue.get()
   return (myself,nMsgs)
 
 # From here, code is executed when program starts:
@@ -155,6 +161,8 @@ while 1:
 
   if nMsgs == 0:
     print('Terminating.')
+    # espera 1 segundo para a resposta do Start sair antes de fechar
+    peerServer.stop(1)
     exit(0)
 
   # Create receiving message handler

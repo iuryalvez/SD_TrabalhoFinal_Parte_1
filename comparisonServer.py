@@ -1,17 +1,31 @@
-from socket import *
-import pickle
 from constMP import *
 import time
 import sys
+import threading
+from concurrent import futures
 import grpc
 import mpcomm_pb2
 import mpcomm_pb2_grpc
 
-serverSock = socket(AF_INET, SOCK_STREAM)
-# Allow immediate reuse of the port after closing
-serverSock.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
-serverSock.bind(('0.0.0.0', SERVER_PORT))
-serverSock.listen(6)
+# Logs recebidos dos peers na rodada atual
+msgs = [] # each msg is a list of tuples (with the original messages received by the peer processes)
+lock = threading.Lock()
+
+# Servico gRPC que recebe o log de cada peer
+class ComparisonServer(mpcomm_pb2_grpc.ComparisonServerServicer):
+	def SendLog(self, request, context):
+		log = []
+		for m in request.msgs:
+			log.append((m.sender, m.seq))
+		with lock:
+			msgs.append(log)
+		print ('Received log from peer', request.peer_id)
+		return mpcomm_pb2.Reply(text='log received')
+
+server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
+mpcomm_pb2_grpc.add_ComparisonServerServicer_to_server(ComparisonServer(), server)
+server.add_insecure_port('0.0.0.0:' + str(SERVER_PORT))
+server.start()
 
 def mainLoop():
 	cont = 1
@@ -30,8 +44,8 @@ def mainLoop():
 			waitForLogsAndCompare(nMsgs)
 		else:
 			print('Stopping.')
-			serverSock.close()
-			
+			server.stop(1)
+
 			# Tell group manager to stop
 			stub.Stop(mpcomm_pb2.Empty())
 			channel.close()
@@ -45,30 +59,18 @@ def startPeers(peerList,nMsgs):
 	# Connect to each of the peers and send the 'initiate' signal:
 	peerNumber = 0
 	for peer in peerList:
-		clientSock = socket(AF_INET, SOCK_STREAM)
-		# peer = (ip, porta UDP, porta TCP)
-		clientSock.connect((peer[0], peer[2]))
-		msg = (peerNumber,nMsgs)
-		msgPack = pickle.dumps(msg)
-		clientSock.send(msgPack)
-		msgPack = clientSock.recv(512)
-		print(pickle.loads(msgPack))
-		clientSock.close()
+		# peer = (ip, porta UDP, porta do servico gRPC)
+		channel = grpc.insecure_channel(peer[0] + ':' + str(peer[2]))
+		stub = mpcomm_pb2_grpc.PeerStub(channel)
+		reply = stub.Start(mpcomm_pb2.StartRequest(peer_id=peerNumber, n_msgs=nMsgs))
+		print(reply.text)
+		channel.close()
 		peerNumber = peerNumber + 1
 
 def waitForLogsAndCompare(N_MSGS):
-	# Loop to wait for the message logs for comparison:
-	numPeers = 0
-	msgs = [] # each msg is a list of tuples (with the original messages received by the peer processes)
-
-	# Receive the logs of messages from the peer processes
-	while numPeers < N:
-		(conn, addr) = serverSock.accept()
-		msgPack = conn.recv(32768)
-		print ('Received log from peer')
-		conn.close()
-		msgs.append(pickle.loads(msgPack))
-		numPeers = numPeers + 1
+	# Wait until the gRPC service has received the logs from all the peer processes
+	while len(msgs) < N:
+		time.sleep(0.1)
 
 	unordered = 0
 
@@ -81,6 +83,10 @@ def waitForLogsAndCompare(N_MSGS):
 				break
 	
 	print ('Found ' + str(unordered) + ' unordered message rounds')
+
+	# limpa os logs para a proxima rodada
+	with lock:
+		msgs.clear()
 
 
 # Initiate server:
