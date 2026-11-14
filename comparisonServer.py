@@ -74,15 +74,49 @@ def waitForLogsAndCompare(N_MSGS):
 
 	unordered = 0
 
-	# Compare the lists of messages
-	for j in range(0,N_MSGS-1):
+	# Cada peer recebe N_MSGS mensagens de cada um dos N peers (inclusive dele mesmo).
+	# Se alguma mensagem se perdeu, os logs podem ter tamanhos diferentes,
+	# entao a comparacao por posicao vai ate o menor log.
+	shortest = len(msgs[0])
+	for i in range(1,N):
+		if len(msgs[i]) < shortest:
+			shortest = len(msgs[i])
+
+	# Compare the lists of messages (todas as posicoes e todos os peers)
+	for j in range(0,shortest):
 		firstMsg = msgs[0][j]
-		for i in range(1,N-1):
+		for i in range(1,N):
 			if firstMsg != msgs[i][j]:
 				unordered = unordered + 1
 				break
-	
+
 	print ('Found ' + str(unordered) + ' unordered message rounds')
+
+	# Verifica cada log separado: mensagens que faltaram e ordem FIFO por remetente
+	totalMissing = 0
+	totalFifoErrors = 0
+	for i in range(0,N):
+		lastSeq = {}    # ultimo numero de sequencia recebido de cada remetente
+		received = {}   # numeros de sequencia recebidos de cada remetente
+		fifoErrors = 0
+		for (sender, seq) in msgs[i]:
+			if sender in lastSeq and seq < lastSeq[sender]:
+				fifoErrors = fifoErrors + 1
+			lastSeq[sender] = seq
+			if sender not in received:
+				received[sender] = set()
+			received[sender].add(seq)
+		missing = 0
+		for sender in range(0,N):
+			if sender in received:
+				missing = missing + N_MSGS - len(received[sender])
+			else:
+				missing = missing + N_MSGS
+		print ('Log ' + str(i) + ': ' + str(len(msgs[i])) + ' messages, ' + str(missing) + ' missing, ' + str(fifoErrors) + ' FIFO violations')
+		totalMissing = totalMissing + missing
+		totalFifoErrors = totalFifoErrors + fifoErrors
+
+	print ('Total: ' + str(totalMissing) + ' missing messages and ' + str(totalFifoErrors) + ' FIFO violations')
 
 	# limpa os logs para a proxima rodada
 	with lock:
