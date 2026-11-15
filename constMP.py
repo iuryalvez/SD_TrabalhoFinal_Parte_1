@@ -6,3 +6,6 @@ SERVER_PORT = 5678
 GROUPMNGR_ADDR = '127.0.0.1'
 GROUPMNGR_TCP_PORT = 5680
 
+
+# Tempo (em segundos) sem confirmacao antes de reenviar uma mensagem
+RETRANSMIT_INTERVAL = 0.5
