@@ -37,8 +37,11 @@ roundNumber = 0
 # receber o sinal de inicio dela.
 readyFrom = {}   # rodada -> peers que ja mandaram READY
 endFrom = {}     # rodada -> peers que ja mandaram a mensagem de fim
-received = {}    # rodada -> (remetente, seq) ja recebidos, para descartar duplicadas
-logs = {}        # rodada -> mensagens na ordem em que foram recebidas
+logs = {}        # rodada -> mensagens na ordem em que foram entregues
+
+# Entrega FIFO: as mensagens de um remetente sao entregues na ordem em que ele enviou.
+nextSeq = {}     # rodada -> {remetente: proximo seq esperado desse remetente}
+holdBack = {}    # rodada -> {remetente: {seq: mensagem}} que chegaram antes da hora
 
 # Mensagens enviadas que ainda nao foram confirmadas:
 # (endereco do destino, rodada, seq) -> [mensagem, hora do ultimo envio]
@@ -111,8 +114,9 @@ def createRound(r):
   if r not in readyFrom:
     readyFrom[r] = set()
     endFrom[r] = set()
-    received[r] = set()
     logs[r] = []
+    nextSeq[r] = {}
+    holdBack[r] = {}
 
 # Envia uma mensagem e guarda ate chegar o ACK do destino.
 # seq identifica a mensagem no ACK: -1 para o READY, 0 a nMsgs-1 para os dados
@@ -137,6 +141,13 @@ class Retransmitter(threading.Thread):
             udpSocket.sendto(pending[key][0], key[0])
             pending[key][1] = now
             retransmissions = retransmissions + 1
+
+# Entrega uma mensagem: coloca no log e passa a esperar a seguinte do remetente.
+# Chamada com o lock ja adquirido.
+def deliver(r, sender, seq):
+  logs[r].append((sender, seq))
+  nextSeq[r][sender] = seq + 1
+  print('Message ' + str(seq) + ' from process ' + str(sender))
 
 # Thread que recebe todas as mensagens UDP. Fica rodando enquanto o processo
 # existir, para continuar confirmando reenvios mesmo depois do fim da rodada.
@@ -168,11 +179,23 @@ class MsgHandler(threading.Thread):
             print('--- Handshake received: ', msg[2])
         elif msg[0] == 'DATA':
           # ('DATA', rodada, remetente, seq)
+          sender = msg[2]
           seq = msg[3]
-          if (msg[2], seq) not in received[r]:
-            received[r].add((msg[2], seq))
-            logs[r].append((msg[2], seq))
-            print('Message ' + str(seq) + ' from process ' + str(msg[2]))
+          if sender not in nextSeq[r]:
+            nextSeq[r][sender] = 0
+            holdBack[r][sender] = {}
+          if seq == nextSeq[r][sender]:
+            # e a proxima esperada: entrega, e depois as seguintes que ja estavam guardadas
+            deliver(r, sender, seq)
+            while nextSeq[r][sender] in holdBack[r][sender]:
+              s = nextSeq[r][sender]
+              del holdBack[r][sender][s]
+              deliver(r, sender, s)
+          elif seq > nextSeq[r][sender] and seq not in holdBack[r][sender]:
+            # chegou antes de uma anterior (que se perdeu ou atrasou): guarda
+            holdBack[r][sender][seq] = (sender, seq)
+            print('Message ' + str(seq) + ' from process ' + str(sender) + ' held back, waiting for ' + str(nextSeq[r][sender]))
+          # se seq < nextSeq ou ja esta guardada, e uma duplicada: so confirma
         elif msg[0] == 'END':
           # ('END', rodada, remetente, nMsgs): o remetente nao tem mais mensagens
           seq = msg[3]
