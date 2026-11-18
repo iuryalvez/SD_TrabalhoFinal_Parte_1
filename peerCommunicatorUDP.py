@@ -47,6 +47,7 @@ holdBack = {}    # rodada -> {remetente: {seq: mensagem}} que chegaram antes da 
 # (endereco do destino, rodada, seq) -> [mensagem, hora do ultimo envio]
 pending = {}
 retransmissions = 0
+simulatedLosses = 0   # pacotes descartados de proposito (LOSS_RATE)
 
 # A thread que recebe, a que reenvia e a principal mexem nessas estruturas
 lock = threading.Lock()
@@ -157,9 +158,17 @@ class MsgHandler(threading.Thread):
     self.sock = sock
 
   def run(self):
+    global simulatedLosses
     print('Handler is ready.')
     while True:
       (msgPack, addr) = self.sock.recvfrom(1024)   # receive data from client
+
+      # Perda simulada: descarta o pacote como se ele tivesse se perdido na rede.
+      # Vale para qualquer tipo, inclusive os ACKs.
+      if random.random() < LOSS_RATE:
+        simulatedLosses = simulatedLosses + 1
+        continue
+
       msg = pickle.loads(msgPack)
 
       if msg[0] == 'ACK':
@@ -246,6 +255,7 @@ while 1:
 
   roundNumber = roundNumber + 1
   retransmissions = 0
+  simulatedLosses = 0
   with lock:
     createRound(roundNumber)
 
@@ -278,7 +288,7 @@ while 1:
   # Sem as duas condicoes, um fim que chega antes de um reenvio encerraria cedo.
   while len(endFrom[roundNumber]) < N or len(logs[roundNumber]) < N * nMsgs:
     time.sleep(0.01)
-  print('Received all messages. Retransmissions in this round: ' + str(retransmissions))
+  print('Received all messages. Retransmissions in this round: ' + str(retransmissions) + ', simulated losses: ' + str(simulatedLosses))
 
   logList = logs[roundNumber]
 
