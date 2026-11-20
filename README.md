@@ -244,4 +244,4 @@ Nessa rodada, cada peer descartou entre 68 e 95 pacotes e fez entre 61 e 80 reen
 
 ## Integrantes
 
-Iury Alexandre Alves Bo (202103735) e Rafael Nunes Moreira Costa (202107855).
+Iury Alexandre Alves Bo (202103735), Rafael Nunes Moreira Costa (202107855) e Luis Henrique Alves Rosa (202103754).
